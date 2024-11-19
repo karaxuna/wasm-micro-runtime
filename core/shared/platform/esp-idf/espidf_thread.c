@@ -33,9 +33,13 @@ os_thread_wrapper(void *arg)
 korp_tid
 os_self_thread(void)
 {
-    /* only allowed if this is a thread, xTaskCreate is not enough look at
-     * product_mini for how to use this*/
-    return pthread_self();
+    #ifndef ESPIDF_DISABLE_PTHREAD
+        /* only allowed if this is a thread, xTaskCreate is not enough look at
+         * product_mini for how to use this*/
+        return pthread_self();
+    #else
+        return 0;
+    #endif
 }
 
 int

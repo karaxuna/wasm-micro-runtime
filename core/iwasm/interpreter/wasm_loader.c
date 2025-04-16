@@ -6638,6 +6638,9 @@ load_from_sections(WASMModule *module, WASMSection *sections,
         }
     }
 
+    LOG_VERBOSE("possible_memory_grow: %s, aux_data_end_global: %s, aux_heap_base_global: %s, aux_stack_top_global: %s",
+    module->possible_memory_grow ? "yes" : "no", aux_data_end_global ? "yes" : "no", aux_heap_base_global ? "yes" : "no", aux_stack_top_global ? "yes" : "no");
+
     if (!module->possible_memory_grow) {
 #if WASM_ENABLE_SHRUNK_MEMORY != 0
         if (aux_data_end_global && aux_heap_base_global
@@ -6645,15 +6648,19 @@ load_from_sections(WASMModule *module, WASMSection *sections,
             uint64 init_memory_size;
             uint64 shrunk_memory_size = align_uint64(aux_heap_base, 8);
 
+            LOG_VERBOSE("shrunk_memory_size: %" PRIu64, shrunk_memory_size);
             /* Only resize(shrunk) the memory size if num_bytes_per_page is in
              * valid range of uint32 */
             if (shrunk_memory_size <= UINT32_MAX) {
+                LOG_VERBOSE("import_memory_count: %" PRIu32, module->import_memory_count);
                 if (module->import_memory_count) {
                     WASMMemoryImport *memory_import =
                         &module->import_memories[0].u.memory;
                     init_memory_size =
                         (uint64)memory_import->mem_type.num_bytes_per_page
                         * memory_import->mem_type.init_page_count;
+                    
+                    LOG_VERBOSE("init_memory_size: %" PRIu64, init_memory_size);
                     if (shrunk_memory_size <= init_memory_size) {
                         /* Reset memory info to decrease memory usage */
                         memory_import->mem_type.num_bytes_per_page =
@@ -6664,10 +6671,13 @@ load_from_sections(WASMModule *module, WASMSection *sections,
                     }
                 }
 
+                LOG_VERBOSE("memory_count: %" PRIu32, module->memory_count);
                 if (module->memory_count) {
                     WASMMemory *memory = &module->memories[0];
                     init_memory_size = (uint64)memory->num_bytes_per_page
                                        * memory->init_page_count;
+                    
+                    LOG_VERBOSE("init_memory_size: %" PRIu64, init_memory_size);
                     if (shrunk_memory_size <= init_memory_size) {
                         /* Reset memory info to decrease memory usage */
                         memory->num_bytes_per_page = (uint32)shrunk_memory_size;
@@ -14335,7 +14345,6 @@ re_scan:
                 check_memidx(module, memidx);
                 PUSH_PAGE_COUNT();
 
-                module->possible_memory_grow = true;
 #if WASM_ENABLE_JIT != 0 || WASM_ENABLE_WAMR_COMPILER != 0
                 func->has_memory_operations = true;
 #endif

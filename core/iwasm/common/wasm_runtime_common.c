@@ -1366,6 +1366,10 @@ wasm_runtime_is_built_in_module(const char *module_name)
             || !strcmp("foo", module_name)
 #endif
             || !strcmp("i2s_std", module_name)
+            || !strcmp("gpio", module_name)
+            || !strcmp("spi_master", module_name)
+            || !strcmp("task", module_name)
+            || !strcmp("websocket", module_name)
             || !strcmp("", module_name));
 }
 

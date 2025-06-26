@@ -1370,7 +1370,7 @@ wasm_runtime_is_built_in_module(const char *module_name)
             || !strcmp("spi_master", module_name)
             || !strcmp("task", module_name)
             || !strcmp("websocket", module_name)
-            || !strcmp("http", module_name)
+            || !strcmp("http_client", module_name)
             || !strcmp("", module_name));
 }
 

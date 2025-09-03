@@ -21,6 +21,8 @@
 #include <sys/socket.h>
 #include <sys/uio.h>
 #include <dirent.h>
+#include <sys/_timespec.h>
+#include <sys/poll.h>
 
 #include "esp_pthread.h"
 #include "esp_timer.h"
@@ -146,9 +148,9 @@ typedef int os_raw_file_handle;
 
 /* The below types are used in platform_api_extension.h,
    we just define them to make the compiler happy */
-typedef int os_poll_file_handle;
+typedef struct pollfd os_poll_file_handle;
 typedef unsigned int os_nfds_t;
-typedef int os_timespec;
+typedef struct timespec os_timespec;
 
 static inline os_file_handle
 os_get_invalid_handle(void)

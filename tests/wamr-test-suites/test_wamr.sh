@@ -39,8 +39,8 @@ function help()
     echo "-F set the firmware path used by qemu"
     echo "-C enable code coverage collect"
     echo "-j set the platform to test"
-    echo "-T set the sanitizer(s) used during testing. It can be either a comma-separated list 
-                                            (e.g., ubsan, asan) or a single option 
+    echo "-T set the sanitizer(s) used during testing. It can be either a comma-separated list
+                                            (e.g., ubsan, asan) or a single option
                                             (e.g., ubsan, tsan, asan, posan)."
     echo "-A use the specified wamrc command instead of building it"
     echo "-N enable extended const expression feature"
@@ -329,14 +329,14 @@ function unit_test()
     echo "Now start unit tests"
 
     cd ${WORK_DIR}
-    rm -fr unittest-build && mkdir unittest-build
-    cd unittest-build
+    rm -fr unittest-build
 
     echo "Build unit test"
     touch ${REPORT_DIR}/unit_test_report.txt
-    cmake ${WORK_DIR}/../../unit -DCOLLECT_CODE_COVERAGE=${COLLECT_CODE_COVERAGE}
-    make -j
-    make test | tee -a ${REPORT_DIR}/unit_test_report.txt
+    cmake -S ${WORK_DIR}/../../unit -B unittest-build \
+      -DCOLLECT_CODE_COVERAGE=${COLLECT_CODE_COVERAGE}
+    cmake --build unittest-build
+    ctest --test-dir unittest-build --output-on-failure | tee -a ${REPORT_DIR}/unit_test_report.txt
 
     echo "Finish unit tests"
 }
@@ -451,10 +451,10 @@ function spec_test()
         echo "checkout spec from threads proposal"
 
         # check spec test cases for threads
-        git clone -b main --single-branch https://github.com/WebAssembly/threads.git spec
+        git clone -b main-legacy --single-branch https://github.com/WebAssembly/threads.git spec
         pushd spec
 
-        # May 31, 2012 [interpreter] implement atomic.wait and atomic.notify (#194)
+        # May 31, 2023 [interpreter] implement atomic.wait and atomic.notify (#194)
         git reset --hard 09f2831349bf409187abb6f7868482a8079f2264
         git apply --ignore-whitespace ../../spec-test-script/thread_proposal_ignore_cases.patch || exit 1
         git apply --ignore-whitespace ../../spec-test-script/thread_proposal_fix_atomic_case.patch || exit 1
@@ -478,6 +478,7 @@ function spec_test()
         #  Dec 9, 2024. Merge branch 'funcref'
         git reset --hard 756060f5816c7e2159f4817fbdee76cf52f9c923
         git apply --ignore-whitespace ../../spec-test-script/gc_ignore_cases.patch || exit 1
+        git apply --ignore-whitespace ../../spec-test-script/gc_array_fill_cases.patch || exit 1
 
         if [[ ${ENABLE_QEMU} == 1 ]]; then
             # Decrease the recursive count for tail call cases as nuttx qemu's
@@ -503,7 +504,7 @@ function spec_test()
         git reset --hard 8d4f6aa2b00a8e7c0174410028625c6a176db8a1
         # ignore import table cases
         git apply --ignore-whitespace ../../spec-test-script/extended_const.patch || exit 1
-        
+
     elif [[ ${ENABLE_MEMORY64} == 1 ]]; then
         echo "checkout spec for memory64 proposal"
 
@@ -1186,8 +1187,24 @@ function trigger()
     done
 }
 
-# if collect code coverage, ignore -s, test all test cases.
 if [[ $TEST_CASE_ARR ]];then
+    # Check if 'unit' is in TEST_CASE_ARR
+    if [[ " ${TEST_CASE_ARR[@]} " =~ " unit " ]]; then
+        # unit test cases are designed with specific compilation flags
+        # and run under specific modes.
+        # There is no need to loop through all running modes in this script.
+        unit_test || (echo "TEST FAILED"; exit 1)
+        if [[ ${COLLECT_CODE_COVERAGE} == 1 ]]; then
+             collect_coverage unit
+        fi
+
+        # remove 'unit' from TEST_CASE_ARR
+        TEST_CASE_ARR=("${TEST_CASE_ARR[@]/unit}")
+        # remove empty elements from TEST_CASE_ARR
+        TEST_CASE_ARR=("${TEST_CASE_ARR[@]:-}")
+    fi
+
+    # loop others through all running modes
     trigger || (echo "TEST FAILED"; exit 1)
 else
     # test all suite, ignore polybench and libsodium because of long time cost
@@ -1200,6 +1217,7 @@ else
         TEST_CASE_ARR+=("libsodium")
     fi
     '
+    # loop through all running modes
     trigger || (echo "TEST FAILED"; exit 1)
     # Add more suites here
 fi

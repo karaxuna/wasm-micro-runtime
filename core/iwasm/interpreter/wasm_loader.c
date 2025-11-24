@@ -8552,6 +8552,15 @@ check_offset_pop(WASMLoaderContext *ctx, uint32 cells)
     return true;
 }
 
+static bool
+check_dynamic_offset_pop(WASMLoaderContext *ctx, uint32 cells)
+{
+    if (ctx->dynamic_offset < 0
+        || (ctx->dynamic_offset > 0 && (uint32)ctx->dynamic_offset < cells))
+        return false;
+    return true;
+}
+
 static void
 free_label_patch_list(BranchBlock *frame_csp)
 {
@@ -9721,6 +9730,16 @@ preserve_local_for_block(WASMLoaderContext *loader_ctx, uint8 opcode,
 
     /* preserve locals before blocks to ensure that "tee/set_local" inside
         blocks will not influence the value of these locals */
+    uint32 frame_offset_cell =
+        (uint32)(loader_ctx->frame_offset - loader_ctx->frame_offset_bottom);
+    uint32 frame_ref_cell =
+        (uint32)(loader_ctx->frame_ref - loader_ctx->frame_ref_bottom);
+    if (frame_offset_cell < loader_ctx->stack_cell_num
+        || frame_ref_cell < loader_ctx->stack_cell_num) {
+        set_error_buf(error_buf, error_buf_size, "stack cell num error");
+        return false;
+    }
+
     while (i < loader_ctx->stack_cell_num) {
         int16 cur_offset = loader_ctx->frame_offset_bottom[i];
         uint8 cur_type = loader_ctx->frame_ref_bottom[i];
@@ -9990,7 +10009,8 @@ wasm_loader_pop_frame_offset(WASMLoaderContext *ctx, uint8 type,
         return true;
 
     ctx->frame_offset -= cell_num_to_pop;
-    if ((*(ctx->frame_offset) > ctx->start_dynamic_offset)
+    if (check_dynamic_offset_pop(ctx, cell_num_to_pop)
+        && (*(ctx->frame_offset) > ctx->start_dynamic_offset)
         && (*(ctx->frame_offset) < ctx->max_dynamic_offset))
         ctx->dynamic_offset -= cell_num_to_pop;
 
@@ -12060,9 +12080,25 @@ re_scan:
                     WASMFuncType *wasm_type = block_type.u.type;
 
                     BranchBlock *cur_block = loader_ctx->frame_csp - 1;
+#if WASM_ENABLE_GC != 0
+                    WASMRefType *ref_type;
+                    uint32 j = 0;
+#endif
 #if WASM_ENABLE_FAST_INTERP != 0
                     uint32 cell_num;
                     available_params = block_type.u.type->param_count;
+#endif
+#if WASM_ENABLE_GC != 0
+                    /* find the index of the last param
+                     * in wasm_type->ref_type_maps as j */
+                    for (i = 0; i < block_type.u.type->param_count; i++) {
+                        if (wasm_is_type_multi_byte_type(wasm_type->types[i])) {
+                            j += 1;
+                        }
+                    }
+                    if (j > 0) {
+                        j -= 1;
+                    }
 #endif
                     for (i = 0; i < block_type.u.type->param_count; i++) {
 
@@ -12076,14 +12112,33 @@ re_scan:
 #endif
                             break;
                         }
+#if WASM_ENABLE_GC != 0
+                        if (wasm_is_type_multi_byte_type(
+                                wasm_type
+                                    ->types[wasm_type->param_count - i - 1])) {
+                            bh_assert(wasm_type->ref_type_maps[j].index
+                                      == wasm_type->param_count - i - 1);
+                            ref_type = wasm_type->ref_type_maps[j].ref_type;
+                            bh_memcpy_s(&wasm_ref_type, sizeof(WASMRefType),
+                                        ref_type,
+                                        wasm_reftype_struct_size(ref_type));
+                            j--;
+                        }
+#endif
 
+                        uint8 *frame_ref_before_pop = loader_ctx->frame_ref;
                         POP_TYPE(
                             wasm_type->types[wasm_type->param_count - i - 1]);
 #if WASM_ENABLE_FAST_INTERP != 0
                         /* decrease the frame_offset pointer accordingly to keep
-                         * consistent with frame_ref stack */
-                        cell_num = wasm_value_type_cell_num(
-                            wasm_type->types[wasm_type->param_count - i - 1]);
+                         * consistent with frame_ref stack. Use the actual
+                         * popped cell count instead of
+                         * wasm_value_type_cell_num() because when the stack top
+                         * is VALUE_TYPE_ANY, wasm_loader_pop_frame_ref always
+                         * pops exactly 1 cell regardless of the expected type
+                         */
+                        cell_num = (uint32)(frame_ref_before_pop
+                                            - loader_ctx->frame_ref);
                         loader_ctx->frame_offset -= cell_num;
 
                         if (loader_ctx->frame_offset

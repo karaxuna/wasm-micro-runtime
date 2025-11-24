@@ -2562,7 +2562,7 @@ wasm_interp_call_func_bytecode(WASMModuleInstance *module,
 
                         if (len > 0) {
                             if ((uint64)start_offset + len
-                                >= wasm_array_obj_length(array_obj)) {
+                                > wasm_array_obj_length(array_obj)) {
                                 wasm_set_exception(
                                     module, "out of bounds array access");
                                 goto got_exception;
@@ -7534,6 +7534,9 @@ wasm_interp_call_func_bytecode(WASMModuleInstance *module,
         HANDLE_OP(EXT_OP_LOOP)
         HANDLE_OP(EXT_OP_IF)
         HANDLE_OP(EXT_OP_BR_TABLE_CACHE)
+#if WASM_ENABLE_SIMDE == 0
+        HANDLE_OP(WASM_OP_SIMD_PREFIX)
+#endif
         {
             wasm_set_exception(module, "unsupported opcode");
             goto got_exception;
